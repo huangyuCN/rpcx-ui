@@ -1,4 +1,4 @@
-module github.com/huangyuCN/rpcx-ui
+module github.com/smallnest/rpcx-ui
 
 go 1.14
 
