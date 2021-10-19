@@ -12,28 +12,40 @@ import (
 	etcd "github.com/smallnest/libkv-etcdv3-store"
 )
 
-type EtcdV3Registry struct {
-	kv kvstore.Store
+// Service is a service endpoint
+type Service struct {
+	ID       string
+	Name     string
+	Address  string
+	Metadata string
+	State    string
+	Group    string
 }
 
-func (r *EtcdV3Registry) initRegistry() {
+type EtcdV3Registry struct {
+	kv             kvstore.Store
+	serviceBaseUrl string
+}
+
+func (r *EtcdV3Registry) initRegistry(etcdUrls []string, serviceBaseUrl string) {
 	etcd.Register()
 
-	kv, err := libkv.NewStore(etcd.ETCDV3, []string{serverConfig.RegistryURL}, nil)
+	kv, err := libkv.NewStore(etcd.ETCDV3, etcdUrls, nil)
 	if err != nil {
 		log.Printf("cannot create etcd registry: %v", err)
 		return
 	}
 	r.kv = kv
+	r.serviceBaseUrl = serviceBaseUrl
 
 	return
 }
 
 func (r *EtcdV3Registry) fetchServices() []*Service {
 	var services []*Service
-	kvs, err := r.kv.List(serverConfig.ServiceBaseURL)
+	kvs, err := r.kv.List(r.serviceBaseUrl)
 	if err != nil {
-		log.Printf("failed to list services %s: %v", serverConfig.ServiceBaseURL, err)
+		log.Printf("failed to list services %s: %v", r.serviceBaseUrl, err)
 		return services
 	}
 
@@ -48,7 +60,7 @@ func (r *EtcdV3Registry) fetchServices() []*Service {
 		for _, n := range nodes {
 			key := string(n.Key[:])
 			i := strings.LastIndex(key, "/")
-			serviceName := strings.TrimPrefix(key[0:i], serverConfig.ServiceBaseURL)
+			serviceName := strings.TrimPrefix(key[0:i], r.serviceBaseUrl)
 			var serviceAddr string
 			fields := strings.Split(key, "/")
 			if fields != nil && len(fields) > 1 {
@@ -79,7 +91,7 @@ func (r *EtcdV3Registry) fetchServices() []*Service {
 }
 
 func (r *EtcdV3Registry) deactivateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+	key := path.Join(r.serviceBaseUrl, name, address)
 
 	kv, err := r.kv.Get(key)
 
@@ -102,7 +114,7 @@ func (r *EtcdV3Registry) deactivateService(name, address string) error {
 }
 
 func (r *EtcdV3Registry) activateService(name, address string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+	key := path.Join(r.serviceBaseUrl, name, address)
 	kv, err := r.kv.Get(key)
 
 	v, err := url.ParseQuery(string(kv.Value[:]))
@@ -120,7 +132,7 @@ func (r *EtcdV3Registry) activateService(name, address string) error {
 }
 
 func (r *EtcdV3Registry) updateMetadata(name, address string, metadata string) error {
-	key := path.Join(serverConfig.ServiceBaseURL, name, address)
+	key := path.Join(r.serviceBaseUrl, name, address)
 	err := r.kv.Put(key, []byte(metadata), &kvstore.WriteOptions{IsDir: false})
 	return err
 }
